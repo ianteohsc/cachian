@@ -7,11 +7,14 @@ from time import time
 # Fastest hash as per Python 3.9, next best is blake2b
 from hashlib import sha3_256 as hashfunc
 from functools import lru_cache, partial
+from dataclasses import dataclass, field
+from .memory_store import MemoryStore
 
 
-DEFAULT_PARTITION_VALUE = 'default'
+DEFAULT_PARTITION_VALUE = '$$'
 NUM_PARAM_HASH_CACHED: int = 10000
 CACHIAN_ENABLE: bool = int(os.environ.get('CACHIAN_ENABLE', 1)) == 1
+KEY_SEPARATOR = '~'
 
 if not CACHIAN_ENABLE:
     print('---Cachian DISABLED---')
@@ -29,21 +32,30 @@ def get_param_hash(*args, **kwargs):
     return m.hexdigest()
 
 
+@dataclass
 class Cachian():
 
     ttl: int = -1  # Seconds
-    cache_lib = {}
+    cache_lib = None #Possible to overwrite to use other backends
     maxsize: int = -1
     lock: Lock = Lock()
     obj_self = None  # Used for holding self for cached class methods
     partition_attr: str|int = ''
+    cache_class = None
 
     def __init__(self, *args, **kwargs) -> None:
 
         self.ttl = kwargs.get('ttl', -1)
         self.maxsize = kwargs.get('maxsize', -1)
         self.test_mode = kwargs.get('test_mode', False)
-        self.cache_lib = kwargs.get('cache_lib', {})
+        self.cache_class = kwargs.get('cache_class')
+
+        if self.cache_class is None:
+            self.cache_class = MemoryStore
+        
+        self.cache_lib = self.cache_class()
+
+
         self.partition_attr = kwargs.get('partition_attr', '')
 
         self.clear_all()
@@ -57,7 +69,7 @@ class Cachian():
 
     def clear_all(self):
         with self.lock:
-            self.cache_lib = {}
+            self.cache_lib = self.cache_class()
 
     def _length(self):
         return len(self.cache_lib)
@@ -85,7 +97,7 @@ class Cachian():
             if self._full():
                 self._pop()
 
-            self.cache_lib[f'{partition_value}_{key}'] = item
+            self.cache_lib[f'{partition_value}{KEY_SEPARATOR}{key}'] = item
 
             pass
 
@@ -93,7 +105,7 @@ class Cachian():
     # get() doesn't check for TTL
     def get(self, key, partition_value=DEFAULT_PARTITION_VALUE):
         with self.lock:
-            return self.cache_lib[f'{partition_value}_{key}']
+            return self.cache_lib[f'{partition_value}{KEY_SEPARATOR}{key}']
 
     # Must be called after checking with has().
     # remove() doesn't check for TTL
@@ -113,7 +125,7 @@ class Cachian():
 
     def has2(self, key, partition_value=DEFAULT_PARTITION_VALUE):
 
-        full_key = f'{partition_value}_{key}'
+        full_key = f'{partition_value}{KEY_SEPARATOR}{key}'
 
         with self.lock:
             r = self.cache_lib.get(full_key)
@@ -133,7 +145,7 @@ class Cachian():
 
 
 # Uses InnerClass so both Cachian() and Cachian(ttl=1) format is supported
-class _CachianWrapper(object):
+class _CachianWrapper():
 
     func = None
     parent: Cachian = None
@@ -205,18 +217,6 @@ class _CachianWrapper(object):
 
     def _add(self, key, result, partition_value):
         self.parent.add(key, (result, time()), partition_value)
-
-    # def fresh(self, *args, **kwargs):
-
-    #     key = get_param_hash(*args, **kwargs)
-    #     partition_value = self._get_partition_value(*args, **kwargs)
-
-    #     self.parent.remove(key, partition_value)
-    #     result = self.func(*args, **kwargs)
-    #     self._add(key, result, partition_value)
-
-    #     if self.parent.test_mode:
-    #         return 'fresh'
 
     def clear_all(self):
         self.parent.clear_all()

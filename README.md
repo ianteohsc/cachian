@@ -35,6 +35,32 @@ class PatientDB:
 def count_patient_name_len(patient_name):
     return len(patient_name)
 ```
+
+## Backends
+
+By default, memory backend is used. Any class that subclasses MutableMapping can be used as a backend store. Refer to the default MemoryStore for a skeletal example.
+
+Using Redis as a backend can be achieved using:
+
+```
+import os
+os.environ["CACHIAN_REDIS_HOST"] = "prod.redis.com"
+os.environ["CACHIAN_REDIS_PORT"] = "6380"
+os.environ["CACHIAN_REDIS_DB"] = "8"
+os.environ["CACHIAN_REDIS_SSL"] = "true"
+os.environ["CACHIAN_REDIS_PASSWORD"] = "abc123"
+
+from cachian.redis_store import RedisStore
+
+class PatientDB:
+
+    @Cachian(cache_class=RedisStore) #LRU caching defaulting to 10,000 items with Redis storage backend
+    def get_by_id(self, id):
+        pass
+```
+
+
+
 # Utilities
 
 
