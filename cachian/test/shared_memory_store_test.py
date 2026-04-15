@@ -4,7 +4,6 @@ os.environ["CACHIAN_SHM_PORT"] = "19848"  # Avoid conflict with other tests
 
 import unittest
 import multiprocessing
-from time import sleep
 from cachian import Cachian
 from cachian.shared_memory_store import SharedMemoryStore
 

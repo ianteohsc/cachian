@@ -7,13 +7,14 @@ from time import time
 # Fastest hash as per Python 3.9, next best is blake2b
 from hashlib import sha3_256 as hashfunc
 from functools import lru_cache, partial
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from .memory_store import MemoryStore
 
 
 DEFAULT_PARTITION_VALUE = '$$'
 NUM_PARAM_HASH_CACHED: int = 10000
 CACHIAN_ENABLE: bool = int(os.environ.get('CACHIAN_ENABLE', 1)) == 1
+CACHIAN_STORE_CLASS = os.environ.get('CACHIAN_STORE_CLASS', 'memory')
 KEY_SEPARATOR = '~'
 
 if not CACHIAN_ENABLE:
@@ -52,7 +53,17 @@ class Cachian():
 
         if self.cache_class is None:
             self.cache_class = MemoryStore
-        
+            
+            if CACHIAN_STORE_CLASS == 'redis':
+                from .redis_store import RedisStore
+                self.cache_class = RedisStore
+            elif CACHIAN_STORE_CLASS == 'shared_memory':
+                from .shared_memory_store import SharedMemoryStore
+                self.cache_class = SharedMemoryStore
+            
+            # You can add other store classes here
+            
+    
         self.cache_lib = self.cache_class()
 
 
