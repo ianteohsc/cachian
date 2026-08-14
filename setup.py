@@ -1,5 +1,8 @@
-from distutils.core import setup
+from importlib import import_module
 from pathlib import Path
+
+setup = import_module('setuptools').setup
+
 this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text()
 
@@ -7,7 +10,7 @@ long_description = (this_directory / "README.md").read_text()
 setup(
     name='cachian',         # How you named your package folder (MyLib)
     packages=['cachian'],   # Chose the same as "name"
-    version='0.6',      # Start with a small number and increase it with every change you make
+    version='0.8',      # Start with a small number and increase it with every change you make
     # Chose a license from here: https://help.github.com/articles/licensing-a-repository
     license='MIT AND (Apache-2.0 OR BSD-2-Clause)',
     # Give a short description about your library

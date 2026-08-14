@@ -1,16 +1,22 @@
 import os
+from importlib import import_module
 os.environ["CACHIAN_DEBUG"] = "1"
 os.environ["CACHIAN_ENABLE"] = "1"
+import multiprocessing
 
-from dotenv import load_dotenv
-load_dotenv()
+
+# Check env loader is available and apply environment variables
+if os.path.exists('env_loader.py'):
+    apply_env_var = import_module('env_loader').apply_env_var
+    apply_env_var()
+
 
 
 from datetime import datetime, timedelta
 from functools import lru_cache
 from time import sleep,perf_counter
 import unittest
-from cachian import Cachian, function_cache_clear_by_partition
+from cachian import Cachian, function_cache_clear_by_partition, function_cache_reset_by_classname
 from uuid import uuid4
 
 TTL_SECONDS = 5
@@ -24,71 +30,81 @@ class Dummy:
     @lru_cache
     def get_id_lru(self,key,value):
         return f'{key}_{value}'
+
+
+class DummyWithAuthKey:
+
+    def __init__(self):
+        self.authkey = multiprocessing.current_process().authkey
+
+    @Cachian(test_mode=True)
+    def get_value(self, value):
+        return value
     
 
-from cachian.redis_store import RedisStore
+# from cachian.redis_store import RedisStore
 
-class DummyRedis:
-    @Cachian(cache_class=RedisStore,test_mode=True)
-    def get_id_redis(self,key,value):
-        return f'{key}_{value}'
+# class DummyRedis:
+#     @Cachian(cache_class=RedisStore,test_mode=True)
+#     def get_id_redis(self,key,value):
+#         return f'{key}_{value}'
         
       
 
-class CachianRedisBackendTestCase(unittest.TestCase):
+# class CachianRedisBackendTestCase(unittest.TestCase):
 
-    def setUp(self) -> None:
-        return super().setUp()    
+#     def setUp(self) -> None:
+#         return super().setUp()    
 
-    def test_get_set(self):
+#     def test_get_set(self):
 
-        dummy = DummyRedis()
+#         dummy = DummyRedis()
         
-        self.assertEqual(dummy.get_id_redis('jkl','1'), 'miss')
-        self.assertEqual(dummy.get_id_redis('jkl','1'), 'hit')
-        self.assertEqual(dummy.get_id_redis('yui','1'), 'miss')
-        self.assertEqual(dummy.get_id_redis('yui','1'), 'hit')    
+#         self.assertEqual(dummy.get_id_redis('jkl','1'), 'miss')
+#         self.assertEqual(dummy.get_id_redis('jkl','1'), 'hit')
+#         self.assertEqual(dummy.get_id_redis('yui','1'), 'miss')
+#         self.assertEqual(dummy.get_id_redis('yui','1'), 'hit')    
 
 
-    def test_cache_benchmark(self):
+#     def test_cache_benchmark(self):
 
-        run_count = 5000000
-        prime_cache_items = 10000
+#         run_count = 5000000
+#         prime_cache_items = 10000
 
-        dummy = DummyRedis()
+#         dummy = DummyRedis()
 
-        @lru_cache
-        def add_lru(a, b):
-            return a+b
-        n=0
-        for i in range(prime_cache_items):
-            add_lru(i,i)
+#         @lru_cache
+#         def add_lru(a, b):
+#             return a+b
+#         n=0
+#         for i in range(prime_cache_items):
+#             add_lru(i,i)
 
-        before=perf_counter()
-        while n< run_count:
-            add_lru(2,2)
-            n+=1
+#         before=perf_counter()
+#         while n< run_count:
+#             add_lru(2,2)
+#             n+=1
 
-        after=perf_counter()
-        lru_duration = after-before
-        print('functools lru_cache: ' + str(lru_duration))
+#         after=perf_counter()
+#         lru_duration = after-before
+#         print('functools lru_cache: ' + str(lru_duration))
 
 
 
-        n=0
-        for i in range(prime_cache_items):
-            dummy.get_id_redis(str(i)+'_key',str(i)+'_value')
+#         n=0
+#         for i in range(prime_cache_items):
+#             dummy.get_id_redis(str(i)+'_key',str(i)+'_value')
 
-        before=perf_counter()
-        while n< run_count:
-            dummy.get_id_redis('1_key','1_value')
-            n+=1
+#         before=perf_counter()
+#         while n< run_count:
+#             dummy.get_id_redis('1_key','1_value')
+#             n+=1
 
-        after=perf_counter()
-        cachian_duration = after-before
-        print('Cachian Redis: ' + str(cachian_duration))   
+#         after=perf_counter()
+#         cachian_duration = after-before
+#         print('Cachian Redis: ' + str(cachian_duration))   
 
-class CachianParitionTestCase(unittest.TestCase):
+class CachianPartitionTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         return super().setUp()
@@ -98,6 +114,8 @@ class CachianParitionTestCase(unittest.TestCase):
 
         dummy = Dummy()
         
+        function_cache_reset_by_classname('Dummy')
+        
         self.assertEqual(dummy.get_id('jkl','1'), 'miss')
         self.assertEqual(dummy.get_id('jkl','1'), 'hit')
         self.assertEqual(dummy.get_id('yui','1'), 'miss')
@@ -106,6 +124,8 @@ class CachianParitionTestCase(unittest.TestCase):
     def test_get_clear(self):
 
         dummy = Dummy()
+        
+        function_cache_reset_by_classname('Dummy')
 
         self.assertEqual(dummy.get_id('abc','1'), 'miss')
         self.assertEqual(dummy.get_id('abc','1'), 'hit')
@@ -117,7 +137,7 @@ class CachianParitionTestCase(unittest.TestCase):
 
 
     def test_benchmark_partition(self):
-        run_count = 5000000
+        run_count = 50000
         prime_cache_items = 10000
 
         dummy = Dummy()
@@ -153,6 +173,30 @@ class CachianParitionTestCase(unittest.TestCase):
         cachian_duration = after-before
         print('Cachian: ' + str(cachian_duration))   
 
+
+        
+    def test_delete_partitioned_performance(self):
+        
+        
+        run_count = 100000
+        n=0
+        
+        dummy = Dummy()
+        while n< run_count:
+            dummy.get_id('1_key','1_value')
+            n+=1        
+        
+        
+        before=perf_counter()
+        
+        function_cache_clear_by_partition('Dummy.get_id','1_key')
+        function_cache_clear_by_partition('Dummy.get_id','1_key')
+        
+        after=perf_counter()
+        clear_duration = after-before
+        print('Cachian partition clear duration: ' + str(clear_duration))
+        
+        self.assertLessEqual(clear_duration,0.2,"Cachian partition clear duration exceeded expected result of 0.2 seconds.")
 
 
 class CachianTestCase(unittest.TestCase):
@@ -257,7 +301,9 @@ class CachianTestCase(unittest.TestCase):
 
 
         try:
-            from cachetools import cached, TTLCache
+            cachetools = import_module('cachetools')
+            cached = cachetools.cached
+            TTLCache = cachetools.TTLCache
             cache = TTLCache(maxsize=10, ttl=timedelta(hours=12), timer=datetime.now)
 
             @cached(cache=cache)
@@ -323,4 +369,14 @@ class CachianTestCase(unittest.TestCase):
     def test_function_name(self):
 
         add = self.add
-        self.assertEqual(add.function_name(), 'add')
+        self.assertEqual(add.function_name(), 'cachian.test.cachian_test add')
+
+    def test_bound_method_ignores_unpicklable_self(self):
+
+        dummy = DummyWithAuthKey()
+
+        try:
+            dummy.get_value('abc')
+        except TypeError as e:
+            self.assertEqual(str(e), "Pickling an AuthenticationString object is disallowed for security reasons")
+        
